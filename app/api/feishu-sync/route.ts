@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { isProtectedMonth, verifyAdminPassword } from "@/lib/auth-protection"
 
 // 飞书多维表格API接口 - 支持分页
 async function fetchAllFeishuTableData(appToken: string, tableId: string, accessToken: string) {
@@ -7,27 +8,39 @@ async function fetchAllFeishuTableData(appToken: string, tableId: string, access
   let hasMore = true
   let pageToken: string | undefined = undefined
   let pageCount = 0
-  const maxPages = 2 // 将最大页数从3改为2（1000条记录），足以覆盖不到800条的表格数据
+  const seenPageTokens = new Set<string>()
+  const MAX_RECORDS = 2000
+  let previousPageToken: string | undefined = undefined
 
-  const filter = {
-    conjunction: "or",
-    conditions: [
-      {
-        field_name: "月份",
-        operator: "contains",
-        value: ["2025-12"],
-      },
-      {
-        field_name: "月份",
-        operator: "contains",
-        value: ["12"],
-      },
-    ],
-  }
-
-  while (hasMore && pageCount < maxPages) {
+  while (hasMore) {
     pageCount++
-    console.log(`[v0] 正在获取第 ${pageCount} 页数据...`)
+
+    if (allItems.length >= MAX_RECORDS) {
+      break
+    }
+
+    if (pageToken && seenPageTokens.has(pageToken)) {
+      break
+    }
+
+    if (pageToken) {
+      seenPageTokens.add(pageToken)
+    }
+
+    if (pageToken && pageToken === previousPageToken) {
+      break
+    }
+
+    const requestBody: any = {
+      page_size: 500,
+      ...(pageToken ? { page_token: pageToken } : {}),
+      sort: [
+        {
+          field_name: "日期",
+          desc: true,
+        },
+      ],
+    }
 
     const response = await fetch(
       `https://open.feishu.cn/open-apis/bitable/v1/apps/${appToken}/tables/${tableId}/records/search`,
@@ -37,11 +50,7 @@ async function fetchAllFeishuTableData(appToken: string, tableId: string, access
           Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          page_size: 500,
-          filter: filter, // 添加筛选条件
-          ...(pageToken ? { page_token: pageToken } : {}),
-        }),
+        body: JSON.stringify(requestBody),
       },
     )
 
@@ -65,35 +74,76 @@ async function fetchAllFeishuTableData(appToken: string, tableId: string, access
     const data = await response.json()
 
     if (data.data?.items) {
+      const itemsCount = data.data.items.length
       allItems = allItems.concat(data.data.items)
-      console.log(`[v0] 第 ${pageCount} 页获取到 ${data.data.items.length} 条记录，累计 ${allItems.length} 条`)
+
+      if (itemsCount === 0) {
+        break
+      }
     }
 
+    previousPageToken = pageToken
     hasMore = data.data?.has_more || false
     pageToken = data.data?.page_token
 
     if (!hasMore) {
-      console.log(`[v0] 已获取所有符合条件的数据，共 ${allItems.length} 条记录`)
+      break
+    }
+
+    if (pageCount >= 200) {
       break
     }
   }
 
-  if (pageCount >= maxPages && hasMore) {
-    console.log(`[v0] ⚠️ 已达到最大页数限制 (${maxPages} 页)，停止获取`)
-  }
+  const filteredItems = allItems.filter((item: any) => {
+    const fields = item.fields
+    const possibleMonthFields = ["月份", "month", "Month", "日期月份", "归属月份", "时间", "日期"]
+    let monthField = ""
 
-  return { items: allItems }
+    for (const fieldName of possibleMonthFields) {
+      const value = extractValueForFilter(fields[fieldName])
+      if (value) {
+        monthField = value
+        break
+      }
+    }
+
+    if (!monthField) {
+      return false
+    }
+
+    let parsedYear = 0
+    let parsedMonth = 0
+
+    const dashMatch = monthField.match(/(\d{4})-(\d{1,2})/)
+    if (dashMatch) {
+      parsedYear = Number.parseInt(dashMatch[1])
+      parsedMonth = Number.parseInt(dashMatch[2])
+    }
+
+    const chineseMatch = monthField.match(/(\d{4})年(\d{1,2})月/)
+    if (chineseMatch) {
+      parsedYear = Number.parseInt(chineseMatch[1])
+      parsedMonth = Number.parseInt(chineseMatch[2])
+    }
+
+    if (parsedYear === 0 || parsedMonth === 0) {
+      return false
+    }
+
+    return parsedYear > 2025 || (parsedYear === 2025 && parsedMonth >= 12)
+  })
+
+  return { items: filteredItems }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    let { appToken, tableId, accessToken } = await request.json()
+    let { appToken, tableId, accessToken, adminUsername, adminPassword } = await request.json()
 
-    // 如果没有提供配置，尝试从环境变量读取
     if (!appToken) appToken = process.env.FEISHU_APP_TOKEN
     if (!tableId) tableId = process.env.FEISHU_TABLE_ID
 
-    // 如果没有accessToken，尝试使用环境变量中的App ID和Secret获取
     if (!accessToken) {
       const appId = process.env.FEISHU_APP_ID
       const appSecret = process.env.FEISHU_APP_SECRET
@@ -122,29 +172,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 从飞书获取所有数据（支持分页）
     const feishuData = await fetchAllFeishuTableData(appToken, tableId, accessToken)
-
-    console.log("[v0] 飞书返回的数据总数:", feishuData.items?.length || 0)
-
-    if (!feishuData.items) {
-      return NextResponse.json({ error: "未获取到数据" }, { status: 404 })
-    }
-
-    if (feishuData.items.length > 0) {
-      console.log("[v0] ==================== 飞书表格字段调试信息 ====================")
-      for (let i = 0; i < Math.min(3, feishuData.items.length); i++) {
-        const item = feishuData.items[i]
-        console.log(`[v0] --- 第 ${i + 1} 条记录 ---`)
-        console.log("[v0] 所有字段名:", Object.keys(item.fields || {}))
-
-        // 打印每个字段的值
-        for (const [fieldName, fieldValue] of Object.entries(item.fields || {})) {
-          console.log(`[v0] 字段 "${fieldName}":`, JSON.stringify(fieldValue))
-        }
-      }
-      console.log("[v0] ================================================================")
-    }
 
     const nameMapping: Record<string, string> = {
       Stephen: "蒋坤洪",
@@ -155,56 +183,58 @@ export async function POST(request: NextRequest) {
       "lewis li": "李宇航",
     }
 
-    const aggregatedData: Record<string, { totalAmount: number; records: any[] }> = {}
-
-    const targetMonth = "2025-12" // 目标月份
-    console.log("[v0] 筛选条件：查找包含", targetMonth, "的记录")
-
-    const extractValue = (field: any): string => {
-      if (!field) return ""
-      if (typeof field === "string" || typeof field === "number") return String(field)
-
-      // 处理 {type: 1, value: [{text: "...", type: "text"}]} 结构
-      if (field.value && Array.isArray(field.value) && field.value.length > 0) {
-        const firstValue = field.value[0]
-        if (firstValue.text) return firstValue.text
-        if (typeof firstValue === "string") return firstValue
-      }
-
-      // 处理数组
-      if (Array.isArray(field)) {
-        const first = field[0]
-        if (!first) return ""
-        if (typeof first === "string") return first
-        if (first.text) return first.text
-        if (first.name) return first.name
-      }
-
-      // 处理简单对象
-      if (field.text) return field.text
-      if (field.name) return field.name
-
-      return ""
-    }
-
-    const extractNumber = (field: any) => {
-      if (!field) return 0
-      if (typeof field === "number") return field
-      if (typeof field === "string") return Number.parseFloat(field) || 0
-      return 0
-    }
-
-    let processedCount = 0
-    let matchedCount = 0
+    const uniqueItems = new Map<string, any>()
 
     feishuData.items.forEach((item: any) => {
       const fields = item.fields
 
-      const possibleMonthFields = ["月份", "month", "Month", "日期月份", "归属月份"]
+      // 提取关键字段用于生成唯一键
+      let employeeName = extractValue(fields["支出人"])
+      if (nameMapping[employeeName]) {
+        employeeName = nameMapping[employeeName]
+      }
+
+      const amount = extractNumber(fields["金额"])
+      const dateField = extractValue(fields["日期"])
+      const category = extractValue(fields["分类"])
+      const note = extractValue(fields["支出说明"])
+
+      // 生成唯一键：员工+日期+金额+分类+说明
+      const uniqueKey = `${employeeName}_${dateField}_${amount}_${category}_${note}`
+
+      // 只保留第一次出现的记录
+      if (!uniqueItems.has(uniqueKey)) {
+        uniqueItems.set(uniqueKey, item)
+      }
+    })
+
+    // 将去重后的数据转换回数组
+    const deduplicatedItems = Array.from(uniqueItems.values())
+
+    console.log(`[v0] 飞书原始记录数: ${feishuData.items.length}`)
+    console.log(`[v0] 去重后记录数: ${deduplicatedItems.length}`)
+    console.log(`[v0] 去除重复记录: ${feishuData.items.length - deduplicatedItems.length} 条`)
+
+    if (deduplicatedItems.length === 0) {
+      return NextResponse.json({
+        success: true,
+        message: "没有需要同步的新记录（2025年12月及之后）",
+        count: 0,
+      })
+    }
+
+    const aggregatedData: Record<string, { totalAmount: number; records: any[]; month: string; employeeName: string }> =
+      {}
+
+    const monthCounts: Record<string, number> = {}
+
+    deduplicatedItems.forEach((item: any) => {
+      const fields = item.fields
+      const possibleMonthFields = ["月份", "month", "Month", "日期月份", "归属月份", "时间", "日期"]
       let monthField = ""
 
       for (const fieldName of possibleMonthFields) {
-        const value = extractValue(fields[fieldName])
+        const value = extractValueForFilter(fields[fieldName])
         if (value) {
           monthField = value
           break
@@ -215,66 +245,74 @@ export async function POST(request: NextRequest) {
       const amount = extractNumber(fields["金额"])
       const category = extractValue(fields["分类"])
       const note = extractValue(fields["支出说明"])
+      const dateField = extractValue(fields["日期"])
 
-      processedCount++
-
-      // 名称映射
       if (nameMapping[employeeName]) {
         employeeName = nameMapping[employeeName]
       }
 
-      const isTargetMonth =
-        monthField && (monthField.includes(targetMonth) || (monthField.includes("12") && monthField.includes("2025")))
-
-      if (!isTargetMonth) {
+      if (!monthField) {
         return
       }
 
-      matchedCount++
+      let parsedYear = 0
+      let parsedMonth = 0
 
-      if (matchedCount <= 5) {
-        console.log(`[v0] ✓ 匹配到第 ${matchedCount} 条: ${employeeName} - ¥${amount} - 月份: ${monthField}`)
+      const dashMatch = monthField.match(/(\d{4})-(\d{1,2})/)
+      if (dashMatch) {
+        parsedYear = Number.parseInt(dashMatch[1])
+        parsedMonth = Number.parseInt(dashMatch[2])
       }
 
-      // 汇总数据
-      if (!aggregatedData[employeeName]) {
-        aggregatedData[employeeName] = {
+      const chineseMatch = monthField.match(/(\d{4})年(\d{1,2})月/)
+      if (chineseMatch) {
+        parsedYear = Number.parseInt(chineseMatch[1])
+        parsedMonth = Number.parseInt(chineseMatch[2])
+      }
+
+      if (parsedYear === 0 || parsedMonth === 0) {
+        return
+      }
+
+      const actualMonth = `${parsedYear}年${parsedMonth}月`
+      monthCounts[actualMonth] = (monthCounts[actualMonth] || 0) + 1
+
+      const key = `${employeeName}_${actualMonth}`
+      if (!aggregatedData[key]) {
+        aggregatedData[key] = {
           totalAmount: 0,
           records: [],
+          month: actualMonth,
+          employeeName: employeeName,
         }
       }
 
-      aggregatedData[employeeName].totalAmount += amount
-      aggregatedData[employeeName].records.push({
+      aggregatedData[key].totalAmount += amount
+      aggregatedData[key].records.push({
         amount,
         category,
         note,
+        date: dateField,
+        monthField: monthField,
       })
     })
 
-    console.log(`[v0] 处理了 ${processedCount} 条记录，匹配到 ${matchedCount} 条12月记录`)
-    console.log("[v0] 汇总后的人员数量:", Object.keys(aggregatedData).length)
-    console.log(
-      "[v0] 汇总详情:",
-      JSON.stringify(
-        Object.entries(aggregatedData).map(([name, data]) => ({
-          name,
-          totalAmount: data.totalAmount,
-          recordCount: data.records.length,
-        })),
-        null,
-        2,
-      ),
-    )
+    const jiangJan2026Key = "蒋坤洪_2026年1月"
+    if (aggregatedData[jiangJan2026Key]) {
+      console.log("[v0] === 蒋坤洪 2026年1月 汇总明细 ===")
+      console.log(`[v0]   总金额: ¥${aggregatedData[jiangJan2026Key].totalAmount.toFixed(2)}`)
+      console.log(`[v0]   记录数: ${aggregatedData[jiangJan2026Key].records.length}`)
+      aggregatedData[jiangJan2026Key].records.forEach((record: any, index: number) => {
+        console.log(
+          `[v0]   ${index + 1}. 日期:${record.date} | 月份:${record.monthField} | ¥${record.amount} | ${record.category}`,
+        )
+      })
+    }
 
     const supabase = await createClient()
 
-    // 获取所有员工信息用于匹配
     const { data: employees } = await supabase.from("employees").select("name, account_number, bank_branch")
 
-    console.log("[v0] 从数据库获取到的员工信息:", employees?.length || 0, "条")
-
-    // 创建员工信息映射表
     const employeeInfoMap = new Map<string, { account_number: string; bank_branch: string }>()
     employees?.forEach((emp) => {
       if (emp.name) {
@@ -285,27 +323,20 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    const reimbursements = Object.entries(aggregatedData).map(([employeeName, data]) => {
-      const { totalAmount, records } = data
+    const reimbursements = Object.entries(aggregatedData).map(([key, data]) => {
+      const { totalAmount, records, month, employeeName } = data as any
 
-      // 从员工信息映射表中获取开户行和账号
       const employeeInfo = employeeInfoMap.get(employeeName)
       const accountNumber = employeeInfo?.account_number || ""
       const bankBranch = employeeInfo?.bank_branch || ""
-
-      if (employeeInfo) {
-        console.log(`[v0] ✓ 为 ${employeeName} 匹配到开户行: ${bankBranch}, 账号: ${accountNumber}`)
-      } else {
-        console.log(`[v0] ⚠️ 未找到 ${employeeName} 的开户行和账号信息`)
-      }
 
       return {
         employee_name: employeeName,
         amount: totalAmount,
         account_number: accountNumber,
         bank_branch: bankBranch,
-        note: "", // 备注留空，用户手动添加
-        month: "2025年12月",
+        note: "",
+        month: month,
         created_at: new Date().toISOString(),
       }
     })
@@ -313,24 +344,21 @@ export async function POST(request: NextRequest) {
     if (reimbursements.length === 0) {
       return NextResponse.json({
         success: true,
-        message: `没有需要同步的新记录（2025年12月），已扫描 ${processedCount} 条记录`,
+        message: "没有需要同步的新记录（2025年12月及之后）",
         count: 0,
-        skipped: feishuData.items.length,
       })
     }
+
+    const monthsToCheck = Array.from(new Set(reimbursements.map((r) => r.month)))
 
     const { data: existingRecords } = await supabase
       .from("reimbursements")
       .select("id, employee_name, amount, month")
-      .eq("month", "2025年12月")
-
-    console.log("[v0] 数据库中12月已有记录:", existingRecords?.length || 0)
+      .gte("month", "2025年12月")
 
     const existingRecordsMap = new Map(
       existingRecords?.map((r) => [`${r.employee_name}_${r.month}`, { id: r.id, amount: r.amount }]) || [],
     )
-
-    console.log("[v0] 已存在的记录key:", Array.from(existingRecordsMap.keys()))
 
     const newReimbursements = []
     const updateReimbursements = []
@@ -340,30 +368,53 @@ export async function POST(request: NextRequest) {
       const existing = existingRecordsMap.get(key)
 
       if (existing) {
+        if (isProtectedMonth(r.month)) {
+          if (!adminUsername || !adminPassword || !verifyAdminPassword(adminUsername, adminPassword)) {
+            console.log(`[v0] 跳过受保护月份的更新: ${r.month}`)
+            continue
+          }
+        }
+
         if (existing.amount === 0 || Math.abs(existing.amount - r.amount) > 0.01) {
-          console.log(
-            `[v0] 🔄 更新记录: ${r.employee_name} - ${r.month} - 金额从 ¥${existing.amount} 更新为 ¥${r.amount}`,
-          )
           updateReimbursements.push({
             id: existing.id,
             amount: r.amount,
             account_number: r.account_number,
             bank_branch: r.bank_branch,
           })
-        } else {
-          console.log(`[v0] ⚠️ 跳过重复记录: ${r.employee_name} - ${r.month} (金额相同: ¥${r.amount})`)
         }
       } else {
-        console.log(`[v0] ✓ 新记录: ${r.employee_name} - ${r.month} - ¥${r.amount}`)
         newReimbursements.push(r)
       }
     }
 
-    console.log("[v0] 待插入的汇总记录数量:", newReimbursements.length)
-    console.log("[v0] 待更新的汇总记录数量:", updateReimbursements.length)
+    // 获取飞书中的所有员工+月份组合
+    const feishuKeys = new Set(reimbursements.map((r) => `${r.employee_name}_${r.month}`))
+
+    const recordsToDelete = []
+    for (const [key, value] of existingRecordsMap.entries()) {
+      if (!feishuKeys.has(key)) {
+        const [employeeName, ...monthParts] = key.split("_")
+        const month = monthParts.join("_") // 处理月份中可能包含下划线的情况
+
+        console.log(`[v0] 检测到需要删除的记录: ${employeeName} - ${month}`)
+
+        // 检查是否是受保护的月份
+        if (isProtectedMonth(month)) {
+          if (!adminUsername || !adminPassword || !verifyAdminPassword(adminUsername, adminPassword)) {
+            console.log(`[v0] 跳过受保护月份的删除: ${month}`)
+            continue
+          }
+        }
+        recordsToDelete.push(value.id)
+      }
+    }
+
+    console.log(`[v0] 共找到 ${recordsToDelete.length} 条需要删除的记录`)
 
     let insertedCount = 0
     let updatedCount = 0
+    let deletedCount = 0
 
     if (newReimbursements.length > 0) {
       const { data, error } = await supabase.from("reimbursements").insert(newReimbursements).select()
@@ -386,17 +437,26 @@ export async function POST(request: NextRequest) {
           })
           .eq("id", update.id)
 
-        if (error) {
-          console.error("数据库更新错误:", error)
-        } else {
+        if (!error) {
           updatedCount++
         }
       }
     }
 
+    if (recordsToDelete.length > 0) {
+      const { error } = await supabase.from("reimbursements").delete().in("id", recordsToDelete)
+
+      if (!error) {
+        deletedCount = recordsToDelete.length
+        console.log(`[v0] 删除了 ${deletedCount} 条在飞书中已不存在的记录`)
+      } else {
+        console.error("删除记录时出错:", error)
+      }
+    }
+
     const skippedCount = reimbursements.length - newReimbursements.length - updateReimbursements.length
 
-    if (insertedCount === 0 && updatedCount === 0) {
+    if (insertedCount === 0 && updatedCount === 0 && deletedCount === 0) {
       return NextResponse.json({
         success: true,
         message: "所有记录已是最新，无需同步",
@@ -407,11 +467,13 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `同步成功：新增 ${insertedCount} 条，更新 ${updatedCount} 条（2025年12月）`,
-      count: insertedCount + updatedCount,
+      message: `同步成功：新增 ${insertedCount} 条，更新 ${updatedCount} 条，删除 ${deletedCount} 条（2025年12月及之后）`,
+      count: insertedCount + updatedCount + deletedCount,
       inserted: insertedCount,
       updated: updatedCount,
+      deleted: deletedCount,
       skipped: skippedCount,
+      monthCounts: monthCounts,
     })
   } catch (error: any) {
     console.error("飞书同步错误:", error)
@@ -436,4 +498,62 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ error: error.message || "同步失败" }, { status: 500 })
   }
+}
+
+const extractValue = (field: any): string => {
+  if (!field) return ""
+  if (typeof field === "string" || typeof field === "number") return String(field)
+
+  // 处理 {type: 1, value: [{text: "...", type: "text"}]} 结构
+  if (field.value && Array.isArray(field.value) && field.value.length > 0) {
+    const firstValue = field.value[0]
+    if (firstValue.text) return firstValue.text
+    if (typeof firstValue === "string") return firstValue
+  }
+
+  // 处理数组
+  if (Array.isArray(field)) {
+    const first = field[0]
+    if (!first) return ""
+    if (typeof first === "string") return first
+    if (first.text) return first.text
+    if (first.name) return first.name
+  }
+
+  // 处理简单对象
+  if (field.text) return field.text
+  if (field.name) return field.name
+
+  return ""
+}
+
+const extractNumber = (field: any) => {
+  if (!field) return 0
+  if (typeof field === "number") return field
+  if (typeof field === "string") return Number.parseFloat(field) || 0
+  return 0
+}
+
+const extractValueForFilter = (field: any): string => {
+  if (!field) return ""
+  if (typeof field === "string" || typeof field === "number") return String(field)
+
+  if (field.value && Array.isArray(field.value) && field.value.length > 0) {
+    const firstValue = field.value[0]
+    if (firstValue.text) return firstValue.text
+    if (typeof firstValue === "string") return firstValue
+  }
+
+  if (Array.isArray(field)) {
+    const first = field[0]
+    if (!first) return ""
+    if (typeof first === "string") return first
+    if (first.text) return first.text
+    if (first.name) return first.name
+  }
+
+  if (field.text) return field.text
+  if (field.name) return field.name
+
+  return ""
 }

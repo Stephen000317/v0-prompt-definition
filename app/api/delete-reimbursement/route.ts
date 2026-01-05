@@ -1,16 +1,21 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { isProtectedMonth, verifyAdminPassword } from "@/lib/auth-protection"
 
 export async function POST(request: Request) {
   console.log("[v0] Delete reimbursement API called")
 
   let employee_name: string
   let month: string
+  let adminUsername: string | undefined
+  let adminPassword: string | undefined
 
   try {
     const body = await request.json()
     employee_name = body.employee_name
     month = body.month
+    adminUsername = body.adminUsername
+    adminPassword = body.adminPassword
 
     console.log("[v0] Delete request params:", { employee_name, month })
 
@@ -22,6 +27,30 @@ export async function POST(request: Request) {
         },
         { status: 200 },
       )
+    }
+
+    if (isProtectedMonth(month)) {
+      if (!adminUsername || !adminPassword) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "此月份数据受保护，需要管理员权限",
+            requiresAuth: true,
+          },
+          { status: 200 },
+        )
+      }
+
+      if (!verifyAdminPassword(adminUsername, adminPassword)) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "管理员账号或密码错误",
+            requiresAuth: true,
+          },
+          { status: 200 },
+        )
+      }
     }
   } catch (parseError) {
     console.error("[v0] Failed to parse request body:", parseError)
@@ -56,7 +85,6 @@ export async function POST(request: Request) {
 
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    // 查询要删除的记录
     console.log("[v0] Querying records to delete...")
     const { data: records, error: queryError } = await supabase
       .from("reimbursements")
@@ -87,7 +115,6 @@ export async function POST(request: Request) {
       )
     }
 
-    // 删除所有匹配的记录
     console.log("[v0] Deleting records...")
     const { error: deleteError } = await supabase
       .from("reimbursements")

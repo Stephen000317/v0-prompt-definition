@@ -74,39 +74,49 @@ export async function addReimbursement(record: ReimbursementRecord): Promise<boo
 }
 
 // 更新报销记录
-export async function updateReimbursement(id: string, record: ReimbursementRecord): Promise<boolean> {
-  const supabase = createBrowserClient()
-
-  const { data: existingRecord, error: fetchError } = await supabase
-    .from("reimbursements")
-    .select("month")
-    .eq("id", id)
-    .single()
-
-  if (fetchError || !existingRecord) {
-    console.error("[v0] Error fetching existing reimbursement:", fetchError)
-    return false
-  }
-
-  const { error } = await supabase
-    .from("reimbursements")
-    .update({
-      employee_name: record.employee_name,
-      amount: record.amount,
-      account_number: record.account_number,
-      bank_branch: record.bank_branch,
-      note: record.note || null,
+export async function updateReimbursement(
+  id: string,
+  formData: {
+    name: string
+    amount: string
+    account: string
+    branch: string
+    note: string
+  },
+): Promise<boolean> {
+  try {
+    console.log("[v0] Calling update-reimbursement API...")
+    const response = await fetch("/api/update-reimbursement", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        id,
+        employee_name: formData.name,
+        amount: Number.parseFloat(formData.amount),
+        account_number: formData.account,
+        bank_branch: formData.branch,
+        note: formData.note || null,
+      }),
     })
-    .eq("id", id)
 
-  if (error) {
+    const result = await response.json()
+    console.log("[v0] API response:", result)
+
+    if (!result.success) {
+      if (result.requiresAuth) {
+        console.log("[v0] Detected REQUIRES_AUTH, throwing error")
+        throw new Error("REQUIRES_AUTH")
+      }
+      throw new Error(result.error || "更新失败")
+    }
+
+    return true
+  } catch (error) {
     console.error("[v0] Error updating reimbursement:", error)
-    return false
+    throw error
   }
-
-  await updateMonthlySummary(existingRecord.month)
-
-  return true
 }
 
 // 删除报销记录

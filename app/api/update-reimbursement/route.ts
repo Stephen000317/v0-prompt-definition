@@ -1,5 +1,8 @@
 import { createClient } from "@supabase/supabase-js"
 import { type NextRequest, NextResponse } from "next/server"
+import { isProtectedMonth, verifyAdminPassword } from "@/lib/auth-protection"
+
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
 export async function POST(request: NextRequest) {
   try {
@@ -8,21 +11,40 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     console.log("[v0] Update request body:", body)
 
-    const { id, old_employee_name, new_employee_name, employee_name, amount, note, month } = body
-
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-    const supabaseKey =
-      process.env.SUPABASE_SERVICE_ROLE_KEY ||
-      process.env.SUPABASE_SECRET_KEY ||
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-
-    const supabase = createClient(supabaseUrl, supabaseKey)
+    const {
+      id,
+      old_employee_name,
+      new_employee_name,
+      employee_name,
+      amount,
+      note,
+      month,
+      adminUsername,
+      adminPassword,
+    } = body
 
     let recordId = id
-    let existingRecord: any = null
+    let existingRecord = null
 
-    // 如果没有id，但有old_employee_name和month，先查询获取记录
-    if (!recordId && old_employee_name && month) {
+    // If id is provided, query by id first
+    if (recordId) {
+      console.log("[v0] Querying by id:", recordId)
+      const { data, error: fetchError } = await supabase.from("reimbursements").select("*").eq("id", recordId).single()
+
+      if (fetchError || !data) {
+        console.error("[v0] Fetch error:", fetchError)
+        return NextResponse.json(
+          {
+            success: false,
+            error: "未找到该报销记录",
+          },
+          { status: 200 },
+        )
+      }
+      existingRecord = data
+      console.log("[v0] Found record by id:", existingRecord)
+    } else if (old_employee_name && month) {
+      // Fall back to querying by old_employee_name and month
       console.log("[v0] Querying by old_employee_name and month:", old_employee_name, month)
 
       const { data, error: queryError } = await supabase
@@ -47,9 +69,7 @@ export async function POST(request: NextRequest) {
       recordId = data.id
       existingRecord = data
       console.log("[v0] Found record:", existingRecord)
-    }
-
-    if (!recordId) {
+    } else {
       return NextResponse.json(
         {
           success: false,
@@ -59,21 +79,28 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 如果还没有existingRecord，通过id查询
-    if (!existingRecord) {
-      const { data, error: fetchError } = await supabase.from("reimbursements").select("*").eq("id", recordId).single()
-
-      if (fetchError || !data) {
-        console.error("[v0] Fetch error:", fetchError)
+    if (isProtectedMonth(existingRecord.month)) {
+      if (!adminUsername || !adminPassword) {
         return NextResponse.json(
           {
             success: false,
-            error: "未找到该报销记录",
+            error: "此月份数据受保护，需要管理员权限",
+            requiresAuth: true,
           },
           { status: 200 },
         )
       }
-      existingRecord = data
+
+      if (!verifyAdminPassword(adminUsername, adminPassword)) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "管理员账号或密码错误",
+            requiresAuth: true,
+          },
+          { status: 200 },
+        )
+      }
     }
 
     const updateData: { employee_name?: string; amount?: number; note?: string } = {}
@@ -136,7 +163,7 @@ export async function POST(request: NextRequest) {
           total_amount: total,
         },
         {
-          onConflict: "month", // 指定当month冲突时更新现有记录
+          onConflict: "month",
         },
       )
     }

@@ -11,6 +11,7 @@ import { MonthlyTrendChart } from "@/components/monthly-trend-chart"
 import { PersonDistributionChart } from "@/components/person-distribution-chart"
 import { FeishuSyncDialog } from "@/components/feishu-sync-dialog" // Import FeishuSyncDialog component for Feishu integration
 import { AIChatbot } from "@/components/ai-chatbot" // Import AIChatbot component
+import { AdminAuthDialog } from "@/components/admin-auth-dialog" // Import AdminAuthDialog component
 import { ChevronLeft, ChevronRight, Plus, Download, Users, Menu } from "lucide-react"
 import {
   DropdownMenu,
@@ -62,19 +63,44 @@ export default function Home() {
   const [showChatbot, setShowChatbot] = useState(false)
   const [showAiAnalysis, setShowAiAnalysis] = useState(false)
   const [showFeishuSyncDialog, setShowFeishuSyncDialog] = useState(false) // State for Feishu sync dialog
+  const [showAdminAuth, setShowAdminAuth] = useState(false)
+  const [pendingUpdate, setPendingUpdate] = useState<{
+    id: string
+    formData: typeof formData
+  } | null>(null)
 
   const handlePreviousMonth = () => {
-    const currentIndex = sortedMonthlyData.findIndex((m) => m.month === currentMonth)
-    if (currentIndex > 0) {
-      setCurrentMonth(sortedMonthlyData[currentIndex - 1].month)
+    const match = currentMonth.match(/(\d+)年(\d+)月/)
+    if (!match) return
+
+    const [, yearStr, monthStr] = match
+    let year = Number(yearStr)
+    let month = Number(monthStr)
+
+    month--
+    if (month < 1) {
+      month = 12
+      year--
     }
+
+    setCurrentMonth(`${year}年${month}月`)
   }
 
   const handleNextMonth = () => {
-    const currentIndex = sortedMonthlyData.findIndex((m) => m.month === currentMonth)
-    if (currentIndex < sortedMonthlyData.length - 1) {
-      setCurrentMonth(sortedMonthlyData[currentIndex + 1].month)
+    const match = currentMonth.match(/(\d+)年(\d+)月/)
+    if (!match) return
+
+    const [, yearStr, monthStr] = match
+    let year = Number(yearStr)
+    let month = Number(monthStr)
+
+    month++
+    if (month > 12) {
+      month = 1
+      year++
     }
+
+    setCurrentMonth(`${year}年${month}月`)
   }
 
   const handleEmployeeSelect = (id: string) => {
@@ -206,7 +232,24 @@ export default function Home() {
     setError(null)
     try {
       if (editingRecord) {
-        await updateRecord(editingRecord.id, formData)
+        try {
+          console.log("[v0] Attempting to update record...")
+          await updateRecord(editingRecord.id, formData)
+          console.log("[v0] Update successful")
+        } catch (error) {
+          console.log("[v0] Caught error in handleAddRecord:", error)
+          if ((error as Error).message === "REQUIRES_AUTH") {
+            console.log("[v0] Showing admin auth dialog")
+            setPendingUpdate({
+              id: editingRecord.id,
+              formData: { ...formData },
+            })
+            setShowAdminAuth(true)
+            setIsLoading(false)
+            return
+          }
+          throw error
+        }
       } else {
         const newRecord: ReimbursementRecord = {
           employee_name: formData.name,
@@ -239,7 +282,7 @@ export default function Home() {
       setEditingRecord(null)
     } catch (error) {
       console.error("添加/更新记录失败:", error)
-      setError("添加/更新记录失败，请重试")
+      setError((error as Error).message || "添加/更新记录失败，请重试")
     } finally {
       setIsLoading(false)
     }
@@ -424,6 +467,51 @@ export default function Home() {
     if (recordCount <= 8) return "print-chart-medium"
     return "print-chart-small"
   }, [currentRecords.length])
+
+  const handleAdminVerified = async (username: string, password: string) => {
+    if (!pendingUpdate) return
+
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      const response = await fetch("/api/update-reimbursement", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id: pendingUpdate.id,
+          employee_name: pendingUpdate.formData.name,
+          amount: Number.parseFloat(pendingUpdate.formData.amount),
+          account_number: pendingUpdate.formData.account,
+          bank_branch: pendingUpdate.formData.branch,
+          note: pendingUpdate.formData.note || null,
+          adminUsername: username,
+          adminPassword: password,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!result.success) {
+        setError(result.error || "更新失败")
+        return
+      }
+
+      await loadDataFromSupabase()
+      setFormData({ name: "", amount: "", account: "", branch: "", note: "" })
+      setShowForm(false)
+      setEditingRecord(null)
+      setShowAdminAuth(false)
+      setPendingUpdate(null)
+    } catch (error) {
+      console.error("更新记录失败:", error)
+      setError("更新记录失败，请重试")
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   if (isChecking) {
     return (
@@ -757,8 +845,12 @@ export default function Home() {
                 </div>
               </div>
               <div className="flex gap-2">
-                <Button onClick={handleAddRecord} className="bg-blue-600 hover:bg-blue-700 text-white">
-                  {editingRecord ? "保存" : "添加"}
+                <Button
+                  onClick={handleAddRecord}
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                  disabled={isLoading}
+                >
+                  {isLoading ? "修改中..." : editingRecord ? "保存" : "添加"}
                 </Button>
                 <Button
                   onClick={() => {
@@ -767,7 +859,8 @@ export default function Home() {
                     setFormData({ name: "", amount: "", account: "", branch: "", note: "" })
                   }}
                   variant="outline"
-                  className="bg-white hover:bg-gray-50 text-gray-900 border-gray-300"
+                  className="border-gray-600 text-gray-700 hover:bg-gray-50"
+                  disabled={isLoading}
                 >
                   取消
                 </Button>
@@ -836,6 +929,20 @@ export default function Home() {
       {showFeishuSyncDialog && (
         <FeishuSyncDialog onClose={() => setShowFeishuSyncDialog(false)} onSyncSuccess={loadDataFromSupabase} />
       )}
+
+      {/* Admin Auth Dialog */}
+      <AdminAuthDialog
+        open={showAdminAuth}
+        onOpenChange={(open) => {
+          setShowAdminAuth(open)
+          if (!open) {
+            setPendingUpdate(null)
+          }
+        }}
+        onVerified={handleAdminVerified}
+        title="管理员验证"
+        description="此月份数据受保护（2025年3-11月），需要管理员权限才能修改"
+      />
     </div>
   )
 }
