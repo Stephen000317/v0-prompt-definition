@@ -125,8 +125,8 @@ export function AmountDetailsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto bg-white dark:bg-gray-900">
-        <DialogHeader>
+      <DialogContent className="max-w-3xl h-[80vh] flex flex-col bg-white dark:bg-gray-900">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle className="text-xl font-bold text-gray-900 dark:text-gray-100">
             {employeeName} - {month} 报销明细
           </DialogTitle>
@@ -135,127 +135,132 @@ export function AmountDetailsDialog({
           </p>
         </DialogHeader>
 
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-            <span className="ml-2 text-gray-600">加载明细中...</span>
-          </div>
-        ) : error ? (
-          <div className="py-8 text-center text-red-600">{error}</div>
-        ) : historicalDataMessage ? (
-          <div className="py-8 px-6">
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 text-center">
-              <p className="text-lg font-semibold text-blue-900 mb-2">📋 历史数据</p>
-              <p className="text-blue-800">{historicalDataMessage}</p>
-              <p className="text-sm text-blue-700 mt-3">
-                数据库中保存的总金额: ¥
-                {totalAmount.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </p>
+        <div className="flex-1 overflow-y-auto min-h-0 mt-4">
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+              <span className="ml-2 text-gray-600">加载明细中...</span>
             </div>
-          </div>
-        ) : categories.length === 0 ? (
-          <div className="py-8 px-6 space-y-4">
-            <div className="text-center">
-              <p className="text-lg font-semibold text-gray-700">暂无明细记录</p>
-              <p className="text-sm text-gray-500 mt-2">
-                数据库中总金额: ¥
-                {totalAmount.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </p>
-            </div>
-
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-sm text-gray-700">
-              <p className="font-semibold text-yellow-800 mb-2">可能的原因：</p>
-              <ul className="space-y-1 list-disc list-inside">
-                <li>飞书表格中该员工使用了不同的姓名格式（如英文名、昵称）</li>
-                <li>该月份的明细数据还未同步到飞书表格</li>
-                <li>这是历史数据（3-11月），飞书中可能已删除</li>
-              </ul>
-              <p className="mt-3 text-yellow-800">
-                <strong>建议：</strong>在飞书表格中搜索该月份的记录，确认"支出人"字段中该员工的实际姓名。
-              </p>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {isIncomplete && (
-              <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-3 text-sm">
-                <p className="font-semibold text-yellow-800 mb-1">⚠️ 数据不完整</p>
-                <p className="text-yellow-700">
-                  飞书明细总额: ¥{fetchedTotalAmount.toFixed(2)} | 数据库总额: ¥{totalAmount.toFixed(2)} | 差额: ¥
-                  {Math.abs(totalAmount - fetchedTotalAmount).toFixed(2)}
-                </p>
-                <p className="text-yellow-700 mt-1">由于飞书API分页限制，无法获取所有明细记录。以下仅显示部分数据。</p>
-                <p className="text-yellow-800 font-semibold mt-2">
-                  💡 解决方法：点击页面上的"飞书同步"按钮，系统会将完整明细保存到数据库，之后查询会更快且显示完整数据。
+          ) : error ? (
+            <div className="py-8 text-center text-red-600">{error}</div>
+          ) : historicalDataMessage ? (
+            <div className="py-8 px-6">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 text-center">
+                <p className="text-lg font-semibold text-blue-900 mb-2">📋 历史数据</p>
+                <p className="text-blue-800">{historicalDataMessage}</p>
+                <p className="text-sm text-blue-700 mt-3">
+                  数据库中保存的总金额: ¥
+                  {totalAmount.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
               </div>
-            )}
+            </div>
+          ) : categories.length === 0 ? (
+            <div className="py-8 px-6 space-y-4">
+              <div className="text-center">
+                <p className="text-lg font-semibold text-gray-700">暂无明细记录</p>
+                <p className="text-sm text-gray-500 mt-2">
+                  数据库中总金额: ¥
+                  {totalAmount.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
 
-            {categories.map((categorySummary) => {
-              const isExpanded = expandedCategories.has(categorySummary.category)
-              return (
-                <Card key={categorySummary.category} className="overflow-hidden border border-gray-300">
-                  <button
-                    onClick={() => toggleCategory(categorySummary.category)}
-                    className="w-full px-4 py-3 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
-                  >
-                    <div className="flex items-center gap-2">
-                      {isExpanded ? (
-                        <ChevronDown className="h-5 w-5 text-gray-600" />
-                      ) : (
-                        <ChevronRight className="h-5 w-5 text-gray-600" />
-                      )}
-                      <span className="font-semibold text-gray-900">{categorySummary.category}</span>
-                      <span className="text-sm text-gray-500">({categorySummary.count}条)</span>
-                    </div>
-                    <span className="font-bold text-blue-600">
-                      ¥
-                      {categorySummary.totalAmount.toLocaleString("zh-CN", {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </span>
-                  </button>
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-sm text-gray-700">
+                <p className="font-semibold text-yellow-800 mb-2">可能的原因：</p>
+                <ul className="space-y-1 list-disc list-inside">
+                  <li>飞书表格中该员工使用了不同的姓名格式（如英文名、昵称）</li>
+                  <li>该月份的明细数据还未同步到飞书表格</li>
+                  <li>这是历史数据（3-11月），飞书中可能已删除</li>
+                </ul>
+                <p className="mt-3 text-yellow-800">
+                  <strong>建议：</strong>在飞书表格中搜索该月份的记录，确认"支出人"字段中该员工的实际姓名。
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3 pb-4">
+              {isIncomplete && (
+                <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-3 text-sm">
+                  <p className="font-semibold text-yellow-800 mb-1">⚠️ 数据不完整</p>
+                  <p className="text-yellow-700">
+                    飞书明细总额: ¥{fetchedTotalAmount.toFixed(2)} | 数据库总额: ¥{totalAmount.toFixed(2)} | 差额: ¥
+                    {Math.abs(totalAmount - fetchedTotalAmount).toFixed(2)}
+                  </p>
+                  <p className="text-yellow-700 mt-1">
+                    由于飞书API分页限制，无法获取所有明细记录。以下仅显示部分数据。
+                  </p>
+                  <p className="text-yellow-800 font-semibold mt-2">
+                    💡
+                    解决方法：点击页面上的"飞书同步"按钮，系统会将完整明细保存到数据库，之后查询会更快且显示完整数据。
+                  </p>
+                </div>
+              )}
 
-                  {isExpanded && (
-                    <div className="overflow-x-auto">
-                      <table className="w-full border-collapse">
-                        <thead>
-                          <tr className="border-b bg-gray-100">
-                            <th className="border-r border-gray-300 px-4 py-2 text-left text-sm font-semibold text-gray-900">
-                              日期
-                            </th>
-                            <th className="border-r border-gray-300 px-4 py-2 text-right text-sm font-semibold text-gray-900">
-                              金额 (¥)
-                            </th>
-                            <th className="px-4 py-2 text-left text-sm font-semibold text-gray-900">说明</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {categorySummary.details.map((detail, index) => (
-                            <tr key={index} className="border-b border-gray-200 hover:bg-gray-50">
-                              <td className="border-r border-gray-300 px-4 py-2 text-sm text-gray-900">
-                                {formatDate(detail.date)}
-                              </td>
-                              <td className="border-r border-gray-300 px-4 py-2 text-right text-sm font-semibold text-gray-900">
-                                ¥
-                                {detail.amount.toLocaleString("zh-CN", {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2,
-                                })}
-                              </td>
-                              <td className="px-4 py-2 text-sm text-gray-700">{detail.note || "-"}</td>
+              {categories.map((categorySummary) => {
+                const isExpanded = expandedCategories.has(categorySummary.category)
+                return (
+                  <Card key={categorySummary.category} className="overflow-hidden border border-gray-300">
+                    <button
+                      onClick={() => toggleCategory(categorySummary.category)}
+                      className="w-full px-4 py-3 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
+                    >
+                      <div className="flex items-center gap-2">
+                        {isExpanded ? (
+                          <ChevronDown className="h-5 w-5 text-gray-600" />
+                        ) : (
+                          <ChevronRight className="h-5 w-5 text-gray-600" />
+                        )}
+                        <span className="font-semibold text-gray-900">{categorySummary.category}</span>
+                        <span className="text-sm text-gray-500">({categorySummary.count}条)</span>
+                      </div>
+                      <span className="font-bold text-blue-600">
+                        ¥
+                        {categorySummary.totalAmount.toLocaleString("zh-CN", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </span>
+                    </button>
+
+                    {isExpanded && (
+                      <div className="overflow-x-auto">
+                        <table className="w-full border-collapse">
+                          <thead>
+                            <tr className="border-b bg-gray-100">
+                              <th className="border-r border-gray-300 px-4 py-2 text-left text-sm font-semibold text-gray-900">
+                                日期
+                              </th>
+                              <th className="border-r border-gray-300 px-4 py-2 text-right text-sm font-semibold text-gray-900">
+                                金额 (¥)
+                              </th>
+                              <th className="px-4 py-2 text-left text-sm font-semibold text-gray-900">说明</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </Card>
-              )
-            })}
-          </div>
-        )}
+                          </thead>
+                          <tbody>
+                            {categorySummary.details.map((detail, index) => (
+                              <tr key={index} className="border-b border-gray-200 hover:bg-gray-50">
+                                <td className="border-r border-gray-300 px-4 py-2 text-sm text-gray-900">
+                                  {formatDate(detail.date)}
+                                </td>
+                                <td className="border-r border-gray-300 px-4 py-2 text-right text-sm font-semibold text-gray-900">
+                                  ¥
+                                  {detail.amount.toLocaleString("zh-CN", {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  })}
+                                </td>
+                                <td className="px-4 py-2 text-sm text-gray-700">{detail.note || "-"}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </Card>
+                )
+              })}
+            </div>
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   )
