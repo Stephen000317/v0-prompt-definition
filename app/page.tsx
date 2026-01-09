@@ -9,9 +9,10 @@ import { Input } from "@/components/ui/input"
 import { ReimbursementTable } from "@/components/reimbursement-table"
 import { MonthlyTrendChart } from "@/components/monthly-trend-chart"
 import { PersonDistributionChart } from "@/components/person-distribution-chart"
-import { FeishuSyncDialog } from "@/components/feishu-sync-dialog" // Import FeishuSyncDialog component for Feishu integration
-import { AIChatbot } from "@/components/ai-chatbot" // Import AIChatbot component
-import { AdminAuthDialog } from "@/components/admin-auth-dialog" // Import AdminAuthDialog component
+import { FeishuSyncDialog } from "@/components/feishu-sync-dialog"
+import { AIChatbot } from "@/components/ai-chatbot"
+import { AdminAuthDialog } from "@/components/admin-auth-dialog"
+import { AmountDetailsDialog } from "@/components/amount-details-dialog"
 import { ChevronLeft, ChevronRight, Plus, Download, Users, Menu } from "lucide-react"
 import {
   DropdownMenu,
@@ -62,12 +63,14 @@ export default function Home() {
   const [employeeFormData, setEmployeeFormData] = useState({ name: "", account: "", branch: "" })
   const [showChatbot, setShowChatbot] = useState(false)
   const [showAiAnalysis, setShowAiAnalysis] = useState(false)
-  const [showFeishuSyncDialog, setShowFeishuSyncDialog] = useState(false) // State for Feishu sync dialog
+  const [showFeishuSyncDialog, setShowFeishuSyncDialog] = useState(false)
   const [showAdminAuth, setShowAdminAuth] = useState(false)
   const [pendingUpdate, setPendingUpdate] = useState<{
     id: string
     formData: typeof formData
   } | null>(null)
+  const [showAmountDetails, setShowAmountDetails] = useState(false)
+  const [selectedRecord, setSelectedRecord] = useState<ReimbursementRecord | null>(null)
 
   const handlePreviousMonth = () => {
     const match = currentMonth.match(/(\d+)年(\d+)月/)
@@ -457,16 +460,10 @@ export default function Home() {
     window.print()
   }
 
-  const currentRecords = allRecords[currentMonth] || []
-  const currentMonthTotal = currentRecords.reduce((sum, record) => sum + record.amount, 0)
-
-  const chartHeightClass = useMemo(() => {
-    const recordCount = currentRecords.length
-    if (recordCount <= 3) return "print-chart-extra-large"
-    if (recordCount <= 5) return "print-chart-large"
-    if (recordCount <= 8) return "print-chart-medium"
-    return "print-chart-small"
-  }, [currentRecords.length])
+  const handleShowDetails = (record: ReimbursementRecord) => {
+    setSelectedRecord(record)
+    setShowAmountDetails(true)
+  }
 
   const handleAdminVerified = async (username: string, password: string) => {
     if (!pendingUpdate) return
@@ -512,6 +509,10 @@ export default function Home() {
       setIsLoading(false)
     }
   }
+
+  const currentRecords = useMemo(() => {
+    return allRecords[currentMonth] || []
+  }, [allRecords, currentMonth])
 
   if (isChecking) {
     return (
@@ -871,14 +872,19 @@ export default function Home() {
           {!showForm && !showEmployeeManager && (
             <>
               <div
-                className={`chart-grid mb-6 grid grid-cols-1 gap-8 md:grid-cols-2 print:mb-4 print:gap-6 print-no-break ${chartHeightClass}`}
+                className={`chart-grid mb-6 grid grid-cols-1 gap-8 md:grid-cols-2 print:mb-4 print:gap-6 print-no-break`}
               >
                 <MonthlyTrendChart data={monthlyData} currentMonth={currentMonth} />
                 <PersonDistributionChart records={currentRecords} />
               </div>
 
               <div className="mb-6 print:mb-3 print-no-break">
-                <ReimbursementTable records={currentRecords} onDelete={handleDeleteRecord} onEdit={handleEdit} />
+                <ReimbursementTable
+                  records={currentRecords}
+                  onDelete={handleDeleteRecord}
+                  onEdit={handleEdit}
+                  onShowDetails={handleShowDetails}
+                />
               </div>
             </>
           )}
@@ -942,6 +948,15 @@ export default function Home() {
         onVerified={handleAdminVerified}
         title="管理员验证"
         description="此月份数据受保护（2025年3-11月），需要管理员权限才能修改"
+      />
+
+      {/* Amount Details Dialog */}
+      <AmountDetailsDialog
+        open={showAmountDetails}
+        onOpenChange={setShowAmountDetails}
+        employeeName={selectedRecord?.employee_name || ""}
+        month={selectedRecord?.month || ""}
+        totalAmount={selectedRecord?.amount || 0}
       />
     </div>
   )

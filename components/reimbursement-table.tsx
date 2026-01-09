@@ -11,9 +11,10 @@ interface ReimbursementTableProps {
   records: ReimbursementRecord[]
   onDelete: (id: string) => void
   onEdit: (record: ReimbursementRecord) => void
+  onShowDetails?: (record: ReimbursementRecord) => void
 }
 
-export function ReimbursementTable({ records, onDelete, onEdit }: ReimbursementTableProps) {
+export function ReimbursementTable({ records, onDelete, onEdit, onShowDetails }: ReimbursementTableProps) {
   const monthlyTotal = records.reduce((sum, record) => sum + record.amount, 0)
 
   return (
@@ -82,8 +83,10 @@ export function ReimbursementTable({ records, onDelete, onEdit }: ReimbursementT
                       {record.employee_name}
                     </td>
                     <td
-                      className="border-r border-gray-300 px-4 py-3 text-sm font-semibold"
+                      className="border-r border-gray-300 px-4 py-3 text-sm font-semibold cursor-pointer hover:bg-blue-50 transition-colors"
                       style={{ color: "#000000 !important" } as React.CSSProperties}
+                      onDoubleClick={() => onShowDetails?.(record)}
+                      title="双击查看明细"
                     >
                       ¥{record.amount.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>

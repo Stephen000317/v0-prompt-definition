@@ -1,4 +1,4 @@
-import { createClient as createBrowserClient } from "@/lib/supabase/client"
+import { createClient } from "@/lib/supabase/client"
 
 export interface ReimbursementRecord {
   id?: string
@@ -31,7 +31,7 @@ export interface MonthlyData {
 
 // 获取指定月份的报销记录
 export async function getReimbursementsByMonth(month: string): Promise<ReimbursementRecord[]> {
-  const supabase = createBrowserClient()
+  const supabase = createClient()
   const { data, error } = await supabase
     .from("reimbursements")
     .select("*")
@@ -48,7 +48,7 @@ export async function getReimbursementsByMonth(month: string): Promise<Reimburse
 
 // 添加报销记录
 export async function addReimbursement(record: ReimbursementRecord): Promise<boolean> {
-  const supabase = createBrowserClient()
+  const supabase = createClient()
 
   // 插入报销记录
   const { error: insertError } = await supabase.from("reimbursements").insert([
@@ -121,7 +121,7 @@ export async function updateReimbursement(
 
 // 删除报销记录
 export async function deleteReimbursement(id: string): Promise<boolean> {
-  const supabase = createBrowserClient()
+  const supabase = createClient()
 
   // 先查询记录以获取月份信息
   const { data: record, error: fetchError } = await supabase
@@ -158,7 +158,7 @@ async function updateMonthlySummary(month: string) {
     return
   }
 
-  const supabase = createBrowserClient()
+  const supabase = createClient()
 
   // 计算该月的总额和记录数
   const { data: records } = await supabase.from("reimbursements").select("amount").eq("month", month)
@@ -186,7 +186,7 @@ async function updateMonthlySummary(month: string) {
 
 // 获取所有月度汇总
 export async function getMonthlySummaries(): Promise<MonthlySummary[]> {
-  const supabase = createBrowserClient()
+  const supabase = createClient()
   const { data, error } = await supabase
     .from("monthly_summaries")
     .select("month, total_amount, record_count")
@@ -202,7 +202,7 @@ export async function getMonthlySummaries(): Promise<MonthlySummary[]> {
 
 // 获取所有员工
 export async function getEmployees(): Promise<EmployeeInfo[]> {
-  const supabase = createBrowserClient()
+  const supabase = createClient()
   const { data, error } = await supabase.from("employees").select("*").order("name", { ascending: true })
 
   if (error) {
@@ -215,7 +215,7 @@ export async function getEmployees(): Promise<EmployeeInfo[]> {
 
 // 添加员工
 export async function addEmployee(employee: EmployeeInfo): Promise<boolean> {
-  const supabase = createBrowserClient()
+  const supabase = createClient()
 
   const { error } = await supabase.from("employees").insert([
     {
@@ -235,7 +235,7 @@ export async function addEmployee(employee: EmployeeInfo): Promise<boolean> {
 
 // 删除员工
 export async function deleteEmployee(id: string): Promise<boolean> {
-  const supabase = createBrowserClient()
+  const supabase = createClient()
 
   const { error } = await supabase.from("employees").delete().eq("id", id)
 
@@ -249,7 +249,7 @@ export async function deleteEmployee(id: string): Promise<boolean> {
 
 // 迁移localStorage数据到Supabase
 export async function migrateFromLocalStorage() {
-  const supabase = createBrowserClient()
+  const supabase = createClient()
 
   try {
     // 迁移员工数据
@@ -282,7 +282,7 @@ export async function migrateFromLocalStorage() {
 
 // 初始化示例数据
 export async function initializeSampleData(): Promise<boolean> {
-  const supabase = createBrowserClient()
+  const supabase = createClient()
 
   try {
     console.log("[v0] Starting sample data initialization...")
@@ -742,7 +742,7 @@ export async function initializeSampleData(): Promise<boolean> {
 
 // 加载所有报销记录
 export async function loadAllRecords(): Promise<{ [key: string]: ReimbursementRecord[] }> {
-  const supabase = createBrowserClient()
+  const supabase = createClient()
   const { data, error } = await supabase.from("reimbursements").select("*").order("created_at", { ascending: true })
 
   if (error) {
@@ -764,7 +764,7 @@ export async function loadAllRecords(): Promise<{ [key: string]: ReimbursementRe
 
 // 导出数据备份功能
 export async function exportDataBackup(): Promise<boolean> {
-  const supabase = createBrowserClient()
+  const supabase = createClient()
 
   try {
     console.log("[v0] Starting data export...")
