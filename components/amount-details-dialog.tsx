@@ -39,6 +39,7 @@ export function AmountDetailsDialog({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [fetchedTotalAmount, setFetchedTotalAmount] = useState(0)
+  const [historicalDataMessage, setHistoricalDataMessage] = useState<string | null>(null)
 
   useEffect(() => {
     if (open && employeeName && month) {
@@ -49,6 +50,7 @@ export function AmountDetailsDialog({
   const fetchDetails = async () => {
     setLoading(true)
     setError(null)
+    setHistoricalDataMessage(null)
 
     try {
       const response = await fetch("/api/get-amount-details", {
@@ -61,6 +63,13 @@ export function AmountDetailsDialog({
 
       if (!result.success) {
         throw new Error(result.error || "获取明细失败")
+      }
+
+      if (result.isHistoricalData) {
+        setHistoricalDataMessage(result.message || "这是历史数据，没有明细记录。")
+        setCategories([])
+        setFetchedTotalAmount(0)
+        return
       }
 
       const details = result.details || []
@@ -83,7 +92,6 @@ export function AmountDetailsDialog({
         details: items.sort((a, b) => Number(b.date) - Number(a.date)), // Sort by date descending
       }))
 
-      // Sort categories by total amount descending
       categorySummaries.sort((a, b) => b.totalAmount - a.totalAmount)
 
       setCategories(categorySummaries)
@@ -134,6 +142,17 @@ export function AmountDetailsDialog({
           </div>
         ) : error ? (
           <div className="py-8 text-center text-red-600">{error}</div>
+        ) : historicalDataMessage ? (
+          <div className="py-8 px-6">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 text-center">
+              <p className="text-lg font-semibold text-blue-900 mb-2">📋 历史数据</p>
+              <p className="text-blue-800">{historicalDataMessage}</p>
+              <p className="text-sm text-blue-700 mt-3">
+                数据库中保存的总金额: ¥
+                {totalAmount.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+            </div>
+          </div>
         ) : categories.length === 0 ? (
           <div className="py-8 px-6 space-y-4">
             <div className="text-center">
@@ -165,8 +184,9 @@ export function AmountDetailsDialog({
                   飞书明细总额: ¥{fetchedTotalAmount.toFixed(2)} | 数据库总额: ¥{totalAmount.toFixed(2)} | 差额: ¥
                   {Math.abs(totalAmount - fetchedTotalAmount).toFixed(2)}
                 </p>
-                <p className="text-yellow-700 mt-1">
-                  由于飞书API分页限制，可能无法获取所有明细记录。以下仅显示部分数据。
+                <p className="text-yellow-700 mt-1">由于飞书API分页限制，无法获取所有明细记录。以下仅显示部分数据。</p>
+                <p className="text-yellow-800 font-semibold mt-2">
+                  💡 解决方法：点击页面上的"飞书同步"按钮，系统会将完整明细保存到数据库，之后查询会更快且显示完整数据。
                 </p>
               </div>
             )}
@@ -175,7 +195,6 @@ export function AmountDetailsDialog({
               const isExpanded = expandedCategories.has(categorySummary.category)
               return (
                 <Card key={categorySummary.category} className="overflow-hidden border border-gray-300">
-                  {/* Category header - clickable to expand/collapse */}
                   <button
                     onClick={() => toggleCategory(categorySummary.category)}
                     className="w-full px-4 py-3 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
@@ -198,7 +217,6 @@ export function AmountDetailsDialog({
                     </span>
                   </button>
 
-                  {/* Expanded detail table */}
                   {isExpanded && (
                     <div className="overflow-x-auto">
                       <table className="w-full border-collapse">
