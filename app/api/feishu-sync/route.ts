@@ -466,6 +466,39 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const detailRecords = []
+    for (const [key, data] of Object.entries(aggregatedData)) {
+      const { records, month, employeeName } = data as any
+
+      for (const record of records) {
+        detailRecords.push({
+          employee_name: employeeName,
+          month: month,
+          date: Number.parseInt(record.date) || 0,
+          amount: record.amount,
+          category: record.category || "",
+          note: record.note || "",
+        })
+      }
+    }
+
+    // Delete existing details for the months being synced, then insert new ones
+    if (detailRecords.length > 0) {
+      const monthsToSync = Array.from(new Set(detailRecords.map((r) => r.month)))
+
+      // Delete old details for these months
+      await supabase.from("reimbursement_details").delete().in("month", monthsToSync)
+
+      // Insert new details
+      const { error: detailsError } = await supabase.from("reimbursement_details").insert(detailRecords)
+
+      if (detailsError) {
+        console.error("[v0] Error inserting details:", detailsError)
+      } else {
+        console.log(`[v0] Inserted ${detailRecords.length} detail records`)
+      }
+    }
+
     const skippedCount = reimbursements.length - newReimbursements.length - updateReimbursements.length
 
     if (insertedCount === 0 && updatedCount === 0 && deletedCount === 0) {
