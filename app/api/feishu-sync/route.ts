@@ -309,6 +309,18 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    const jiangDec2025Key = "蒋坤洪_2025年12月"
+    if (aggregatedData[jiangDec2025Key]) {
+      console.log("[v0] === 蒋坤洪 2025年12月 汇总明细 ===")
+      console.log(`[v0]   总金额: ¥${aggregatedData[jiangDec2025Key].totalAmount.toFixed(2)}`)
+      console.log(`[v0]   记录数: ${aggregatedData[jiangDec2025Key].records.length}`)
+      aggregatedData[jiangDec2025Key].records.forEach((record: any, index: number) => {
+        console.log(
+          `[v0]   ${index + 1}. 日期:${record.date} | 月份:${record.monthField} | ¥${record.amount} | ${record.category || "无"}`,
+        )
+      })
+    }
+
     const supabase = await createClient()
 
     const { data: employees } = await supabase.from("employees").select("name, account_number, bank_branch")
