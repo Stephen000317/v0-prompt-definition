@@ -125,7 +125,7 @@ export function AmountDetailsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl h-[80vh] flex flex-col bg-white dark:bg-gray-900">
+      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col bg-white dark:bg-gray-900">
         <DialogHeader className="flex-shrink-0">
           <DialogTitle className="text-xl font-bold text-gray-900 dark:text-gray-100">
             {employeeName} - {month} 报销明细
@@ -135,7 +135,7 @@ export function AmountDetailsDialog({
           </p>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto min-h-0 mt-4">
+        <div className="flex-1 overflow-y-auto min-h-[200px] max-h-[calc(90vh-120px)] mt-4 pr-2">
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
