@@ -13,7 +13,7 @@ import { FeishuSyncDialog } from "@/components/feishu-sync-dialog"
 import { AIChatbot } from "@/components/ai-chatbot"
 import { AdminAuthDialog } from "@/components/admin-auth-dialog"
 import { AmountDetailsDialog } from "@/components/amount-details-dialog"
-import { ChevronLeft, ChevronRight, Plus, Download, Users, Menu } from "lucide-react"
+import { ChevronLeft, ChevronRight, Download, Users, Menu, TrendingUp } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -408,8 +408,8 @@ export default function Home() {
     return sortedMonthlyData.reduce((sum, monthData) => {
       const monthMatch = monthData.month.match(/(\d+)年(\d+)月/)
       if (!monthMatch) return sum
-      const [, year, month] = monthMatch
-      const monthValue = Number(year) * 100 + Number(month)
+      const [, y, mo] = monthMatch
+      const monthValue = Number(y) * 100 + Number(mo)
 
       if (monthValue <= currentValue) {
         return sum + monthData.total
@@ -607,10 +607,15 @@ export default function Home() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-48">
-                <DropdownMenuItem onClick={() => setShowForm(!showForm)} className="cursor-pointer gap-2">
-                  <Plus className="h-4 w-4" />
-                  添加记录
+                <DropdownMenuItem onClick={() => setShowEmployeeManager(true)} className="cursor-pointer gap-2">
+                  <Users className="h-4 w-4" />
+                  员工管理
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => router.push("/expense-forecast")} className="cursor-pointer gap-2">
+                  <TrendingUp className="h-4 w-4" />
+                  费用测算
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleFeishuSync} className="cursor-pointer gap-2">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
@@ -650,13 +655,6 @@ export default function Home() {
                     <polyline points="7 3 7 8 15 8" />
                   </svg>
                   保存备份
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => setShowEmployeeManager(!showEmployeeManager)}
-                  className="cursor-pointer gap-2"
-                >
-                  <Users className="h-4 w-4" />
-                  员工管理
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
