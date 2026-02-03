@@ -9,26 +9,53 @@ export async function GET() {
       process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     )
 
-    // 执行一个简单的查询来保持数据库活跃
-    const { data, error } = await supabase
-      .from("reimbursements")
-      .select("id")
-      .limit(1)
-
-    if (error) {
-      console.error("[keep-alive] Supabase ping failed:", error)
-      return NextResponse.json({ success: false, error: error.message }, { status: 500 })
-    }
-
-    const timestamp = new Date().toISOString()
-    console.log(`[keep-alive] Supabase ping successful at ${timestamp}`)
+    // 添加重试机制，最多重试3次
+    let lastError: Error | null = null
+    let retries = 3
     
+    while (retries > 0) {
+      try {
+        // 执行多个简单查询来确保数据库完全活跃
+        const queries = [
+          supabase.from("reimbursements").select("id").limit(1),
+          supabase.from("reimbursement_details").select("id").limit(1),
+          supabase.from("budgets").select("id").limit(1)
+        ]
+        
+        const results = await Promise.allSettled(queries)
+        const successCount = results.filter(r => r.status === 'fulfilled').length
+        
+        if (successCount > 0) {
+          // 至少一个查询成功就算保活成功
+          const timestamp = new Date().toISOString()
+          console.log(`[keep-alive] Supabase ping successful at ${timestamp} (${successCount}/3 queries succeeded)`)
+          
+          return NextResponse.json({ 
+            success: true, 
+            message: "Supabase is alive",
+            timestamp,
+            queriesSucceeded: successCount,
+            totalQueries: 3
+          })
+        }
+        
+        throw new Error("All queries failed")
+      } catch (error) {
+        lastError = error as Error
+        retries--
+        if (retries > 0) {
+          // 等待2秒后重试
+          await new Promise(resolve => setTimeout(resolve, 2000))
+          console.log(`[keep-alive] Retrying... (${retries} attempts left)`)
+        }
+      }
+    }
+    
+    console.error("[keep-alive] All retries failed:", lastError)
     return NextResponse.json({ 
-      success: true, 
-      message: "Supabase is alive",
-      timestamp,
-      recordsFound: data?.length || 0
-    })
+      success: false, 
+      error: lastError?.message || "Failed after all retries" 
+    }, { status: 500 })
   } catch (error) {
     console.error("[keep-alive] Error:", error)
     return NextResponse.json({ success: false, error: String(error) }, { status: 500 })
