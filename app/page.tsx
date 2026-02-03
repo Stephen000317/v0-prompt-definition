@@ -171,7 +171,14 @@ export default function Home() {
     setIsLoading(true)
     setError(null)
     try {
-      const recordsByMonth = await loadAllRecords()
+      // 使用API而不是直接调用Supabase客户端
+      const response = await fetch('/api/load-reimbursements')
+      if (!response.ok) {
+        throw new Error('Failed to load data')
+      }
+      const result = await response.json()
+      const recordsByMonth = result.data || {}
+      
       const employeeList = await loadEmployees()
 
       const totalRecords = Object.values(recordsByMonth).reduce((sum, records) => sum + records.length, 0)

@@ -742,24 +742,50 @@ export async function initializeSampleData(): Promise<boolean> {
 
 // 加载所有报销记录
 export async function loadAllRecords(): Promise<{ [key: string]: ReimbursementRecord[] }> {
-  const supabase = createClient()
-  const { data, error } = await supabase.from("reimbursements").select("*").order("created_at", { ascending: true })
+  try {
+    const supabase = createClient()
+    
+    // 添加重试机制
+    let retries = 3
+    let lastError: Error | null = null
+    
+    while (retries > 0) {
+      try {
+        const { data, error } = await supabase
+          .from("reimbursements")
+          .select("*")
+          .order("created_at", { ascending: true })
 
-  if (error) {
+        if (error) {
+          throw error
+        }
+
+        // 按月份分组
+        const recordsByMonth: { [key: string]: ReimbursementRecord[] } = {}
+        for (const record of data || []) {
+          if (!recordsByMonth[record.month]) {
+            recordsByMonth[record.month] = []
+          }
+          recordsByMonth[record.month].push(record)
+        }
+
+        return recordsByMonth
+      } catch (e) {
+        lastError = e as Error
+        retries--
+        if (retries > 0) {
+          // 等待一段时间后重试
+          await new Promise(resolve => setTimeout(resolve, 1000))
+        }
+      }
+    }
+    
+    console.error("[v0] Error fetching all reimbursements after retries:", lastError)
+    return {}
+  } catch (error) {
     console.error("[v0] Error fetching all reimbursements:", error)
     return {}
   }
-
-  // 按月份分组
-  const recordsByMonth: { [key: string]: ReimbursementRecord[] } = {}
-  for (const record of data || []) {
-    if (!recordsByMonth[record.month]) {
-      recordsByMonth[record.month] = []
-    }
-    recordsByMonth[record.month].push(record)
-  }
-
-  return recordsByMonth
 }
 
 // 导出数据备份功能
