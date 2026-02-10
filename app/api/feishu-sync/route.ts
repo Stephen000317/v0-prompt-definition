@@ -204,28 +204,14 @@ export async function POST(request: NextRequest) {
       "lewis li": "李宇航",
     }
 
+    // 使用飞书记录ID去重，避免误删同一天相同金额的不同交易
     const uniqueItems = new Map<string, any>()
 
     feishuData.items.forEach((item: any) => {
-      const fields = item.fields
-
-      // 提取关键字段用于生成唯一键
-      let employeeName = extractValue(fields["支出人"])
-      if (nameMapping[employeeName]) {
-        employeeName = nameMapping[employeeName]
-      }
-
-      const amount = extractNumber(fields["金额"])
-      const dateField = extractValue(fields["日期"])
-      const category = extractValue(fields["分类"])
-      const note = extractValue(fields["支出说明"])
-
-      // 生成唯一键：员工+日期+金额+分类+说明
-      const uniqueKey = `${employeeName}_${dateField}_${amount}_${category}_${note}`
-
-      // 只保留第一次出现的记录
-      if (!uniqueItems.has(uniqueKey)) {
-        uniqueItems.set(uniqueKey, item)
+      // 使用飞书的record_id作为唯一标识
+      const recordId = item.record_id || item.id || JSON.stringify(item)
+      if (!uniqueItems.has(recordId)) {
+        uniqueItems.set(recordId, item)
       }
     })
 
