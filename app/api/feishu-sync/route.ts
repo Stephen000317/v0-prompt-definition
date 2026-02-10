@@ -42,17 +42,38 @@ async function fetchAllFeishuTableData(appToken: string, tableId: string, access
       ],
     }
 
-    const response = await fetch(
-      `https://open.feishu.cn/open-apis/bitable/v1/apps/${appToken}/tables/${tableId}/records/search`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(requestBody),
-      },
-    )
+    // 添加重试机制
+    let response: Response | null = null
+    let lastError: Error | null = null
+    let retries = 3
+    
+    while (retries > 0 && !response) {
+      try {
+        response = await fetch(
+          `https://open.feishu.cn/open-apis/bitable/v1/apps/${appToken}/tables/${tableId}/records/search`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(requestBody),
+            signal: AbortSignal.timeout(30000), // 30秒超时
+          },
+        )
+      } catch (error) {
+        lastError = error as Error
+        retries--
+        if (retries > 0) {
+          console.log(`[v0] Feishu API fetch failed, retrying... (${retries} attempts left)`)
+          await new Promise(resolve => setTimeout(resolve, 2000))
+        }
+      }
+    }
+    
+    if (!response) {
+      throw new Error(`飞书API请求失败，已重试3次: ${lastError?.message || 'Network error'}`)
+    }
 
     if (!response.ok) {
       const errorData = await response.json()
