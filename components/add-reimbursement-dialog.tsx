@@ -31,27 +31,45 @@ interface AddReimbursementDialogProps {
 export function AddReimbursementDialog({ onSuccess, employees = [] }: AddReimbursementDialogProps) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [isNewEmployee, setIsNewEmployee] = useState(false)
   const [formData, setFormData] = useState({
     employee_name: "",
     amount: "",
     month: "",
     account_number: "",
     bank_branch: "",
+    bank_name: "",
+    bank_region: "",
     note: "",
   })
 
   // 当选择员工时，自动填充银行信息
   const handleEmployeeChange = (name: string) => {
-    setFormData((prev) => ({ ...prev, employee_name: name }))
-    
-    const employee = employees.find((e) => e.name === name)
-    if (employee) {
+    if (name === "__new__") {
+      setIsNewEmployee(true)
       setFormData((prev) => ({
         ...prev,
-        employee_name: name,
-        account_number: employee.account_number || "",
-        bank_branch: employee.bank_branch || "",
+        employee_name: "",
+        account_number: "",
+        bank_branch: "",
+        bank_name: "",
+        bank_region: "",
       }))
+    } else {
+      setIsNewEmployee(false)
+      setFormData((prev) => ({ ...prev, employee_name: name }))
+      
+      const employee = employees.find((e) => e.name === name)
+      if (employee) {
+        setFormData((prev) => ({
+          ...prev,
+          employee_name: name,
+          account_number: employee.account_number || "",
+          bank_branch: employee.bank_branch || "",
+          bank_name: employee.bank_name || "",
+          bank_region: employee.bank_region || "",
+        }))
+      }
     }
   }
 
@@ -90,12 +108,15 @@ export function AddReimbursementDialog({ onSuccess, employees = [] }: AddReimbur
       if (result.success) {
         alert(result.message)
         setOpen(false)
+        setIsNewEmployee(false)
         setFormData({
           employee_name: "",
           amount: "",
           month: "",
           account_number: "",
           bank_branch: "",
+          bank_name: "",
+          bank_region: "",
           note: "",
         })
         onSuccess?.()
@@ -133,7 +154,7 @@ export function AddReimbursementDialog({ onSuccess, employees = [] }: AddReimbur
             <select
               id="employee"
               className="col-span-3 flex h-10 w-full rounded-md border border-input bg-white dark:bg-zinc-800 px-3 py-2 text-sm"
-              value={formData.employee_name}
+              value={isNewEmployee ? "__new__" : formData.employee_name}
               onChange={(e) => handleEmployeeChange(e.target.value)}
             >
               <option value="">选择员工</option>
@@ -142,8 +163,25 @@ export function AddReimbursementDialog({ onSuccess, employees = [] }: AddReimbur
                   {emp.name}
                 </option>
               ))}
+              <option value="__new__">+ 新建员工</option>
             </select>
           </div>
+          
+          {/* 新建员工时显示姓名输入框 */}
+          {isNewEmployee && (
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="new_name" className="text-right">
+                姓名
+              </Label>
+              <Input
+                id="new_name"
+                placeholder="输入新员工姓名"
+                className="col-span-3"
+                value={formData.employee_name}
+                onChange={(e) => setFormData((prev) => ({ ...prev, employee_name: e.target.value }))}
+              />
+            </div>
+          )}
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="month" className="text-right">
               月份
@@ -200,6 +238,36 @@ export function AddReimbursementDialog({ onSuccess, employees = [] }: AddReimbur
               onChange={(e) => setFormData((prev) => ({ ...prev, bank_branch: e.target.value }))}
             />
           </div>
+          
+          {/* 新建员工时显示更多银行信息 */}
+          {isNewEmployee && (
+            <>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="bank_name" className="text-right">
+                  银行名称
+                </Label>
+                <Input
+                  id="bank_name"
+                  placeholder="如：中信银行"
+                  className="col-span-3"
+                  value={formData.bank_name}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, bank_name: e.target.value }))}
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="bank_region" className="text-right">
+                  银行地区
+                </Label>
+                <Input
+                  id="bank_region"
+                  placeholder="如：广东省/深圳市"
+                  className="col-span-3"
+                  value={formData.bank_region}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, bank_region: e.target.value }))}
+                />
+              </div>
+            </>
+          )}
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="note" className="text-right">
               备注

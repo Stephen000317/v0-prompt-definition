@@ -40,6 +40,34 @@ export async function POST(request: Request) {
       )
     }
 
+    // 检查员工是否存在，如果不存在则创建
+    const { data: existingEmployee } = await supabase
+      .from("employees")
+      .select("*")
+      .eq("name", employee_name)
+      .single()
+
+    if (!existingEmployee) {
+      // 新建员工
+      const { error: employeeError } = await supabase.from("employees").insert({
+        name: employee_name,
+        account_number: account_number || "",
+        bank_branch: bank_branch || "",
+        bank_name: bank_name || "",
+        bank_region: bank_region || "",
+      })
+
+      if (employeeError) {
+        console.error("[manual-reimbursement] Error creating employee:", employeeError)
+        // 如果是唯一约束冲突，忽略错误继续
+        if (!employeeError.message.includes("duplicate")) {
+          return NextResponse.json({ error: `创建员工失败: ${employeeError.message}` }, { status: 500 })
+        }
+      } else {
+        console.log(`[manual-reimbursement] Created new employee: ${employee_name}`)
+      }
+    }
+
     // 查看该员工该月是否已有记录
     const { data: existingRecord } = await supabase
       .from("reimbursements")
