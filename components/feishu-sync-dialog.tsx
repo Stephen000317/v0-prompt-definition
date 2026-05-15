@@ -20,6 +20,13 @@ export function FeishuSyncDialog({ onClose, onSyncSuccess }: FeishuSyncDialogPro
     updated: number
     deleted: number
     skipped: number
+    changeDetails?: {
+      type: "insert" | "update" | "delete"
+      employee_name: string
+      month: string
+      amount: number
+      oldAmount?: number
+    }[]
   } | null>(null)
   const [showAuthDialog, setShowAuthDialog] = useState(false)
   const [adminCredentials, setAdminCredentials] = useState<{ username: string; password: string } | null>(null)
@@ -61,6 +68,7 @@ export function FeishuSyncDialog({ onClose, onSyncSuccess }: FeishuSyncDialogPro
           updated,
           deleted,
           skipped,
+          changeDetails: result.changeDetails || [],
         })
 
         const parts = []
@@ -135,6 +143,34 @@ export function FeishuSyncDialog({ onClose, onSyncSuccess }: FeishuSyncDialogPro
                     {syncResult.updated > 0 && <p>• 更新记录: {syncResult.updated} 条</p>}
                     {syncResult.deleted > 0 && <p>• 删除记录: {syncResult.deleted} 条</p>}
                     {syncResult.skipped > 0 && <p>• 跳过记录: {syncResult.skipped} 条</p>}
+                    
+                    {/* 显示详细变更 */}
+                    {syncResult.changeDetails && syncResult.changeDetails.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-green-200 dark:border-green-700">
+                        <p className="font-medium mb-2">变更详情：</p>
+                        <div className="max-h-[200px] overflow-y-auto space-y-1">
+                          {syncResult.changeDetails.map((change, idx) => (
+                            <p key={idx} className="text-xs">
+                              {change.type === "insert" && (
+                                <span className="text-green-600 dark:text-green-400">
+                                  [新增] {change.employee_name} - {change.month}: ¥{change.amount.toLocaleString()}
+                                </span>
+                              )}
+                              {change.type === "update" && (
+                                <span className="text-blue-600 dark:text-blue-400">
+                                  [更新] {change.employee_name} - {change.month}: ¥{change.oldAmount?.toLocaleString()} → ¥{change.amount.toLocaleString()}
+                                </span>
+                              )}
+                              {change.type === "delete" && (
+                                <span className="text-red-600 dark:text-red-400">
+                                  [删除] {change.employee_name} - {change.month}: ¥{change.amount.toLocaleString()}
+                                </span>
+                              )}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

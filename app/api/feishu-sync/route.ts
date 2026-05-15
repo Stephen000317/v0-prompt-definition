@@ -457,6 +457,15 @@ export async function POST(request: NextRequest) {
     let insertedCount = 0
     let updatedCount = 0
     let deletedCount = 0
+    
+    // 收集详细的变更信息
+    const changeDetails: {
+      type: "insert" | "update" | "delete"
+      employee_name: string
+      month: string
+      amount: number
+      oldAmount?: number
+    }[] = []
 
     if (newReimbursements.length > 0) {
       const { data, error } = await supabase.from("reimbursements").insert(newReimbursements).select()
@@ -466,10 +475,25 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: `数据库错误: ${error.message}` }, { status: 500 })
       }
       insertedCount = data.length
+      
+      // 记录新增详情
+      for (const r of newReimbursements) {
+        changeDetails.push({
+          type: "insert",
+          employee_name: r.employee_name,
+          month: r.month,
+          amount: r.amount,
+        })
+      }
     }
 
     if (updateReimbursements.length > 0) {
       for (const update of updateReimbursements) {
+        // 获取旧金额
+        const oldRecord = existingRecordsMap.get(
+          Array.from(existingRecordsMap.entries()).find(([k, v]) => v.id === update.id)?.[0] || ""
+        )
+        
         const { error } = await supabase
           .from("reimbursements")
           .update({
@@ -481,11 +505,40 @@ export async function POST(request: NextRequest) {
 
         if (!error) {
           updatedCount++
+          
+          // 找到对应的员工和月份
+          const entry = Array.from(existingRecordsMap.entries()).find(([k, v]) => v.id === update.id)
+          if (entry) {
+            const [employeeName, ...monthParts] = entry[0].split("_")
+            const month = monthParts.join("_")
+            changeDetails.push({
+              type: "update",
+              employee_name: employeeName,
+              month: month,
+              amount: update.amount,
+              oldAmount: oldRecord?.amount,
+            })
+          }
         }
       }
     }
 
     if (recordsToDelete.length > 0) {
+      // 先记录要删除的详情
+      for (const deleteId of recordsToDelete) {
+        const entry = Array.from(existingRecordsMap.entries()).find(([k, v]) => v.id === deleteId)
+        if (entry) {
+          const [employeeName, ...monthParts] = entry[0].split("_")
+          const month = monthParts.join("_")
+          changeDetails.push({
+            type: "delete",
+            employee_name: employeeName,
+            month: month,
+            amount: entry[1].amount,
+          })
+        }
+      }
+      
       const { error } = await supabase.from("reimbursements").delete().in("id", recordsToDelete)
 
       if (!error) {
@@ -547,6 +600,7 @@ export async function POST(request: NextRequest) {
         count: 0,
         skipped: skippedCount,
         lockedMonths: lockedMonthsList,
+        changeDetails: [],
       })
     }
 
@@ -561,6 +615,7 @@ export async function POST(request: NextRequest) {
       skippedLocked: skippedLockedCount,
       lockedMonths: lockedMonthsList,
       monthCounts: monthCounts,
+      changeDetails: changeDetails,
     })
   } catch (error: any) {
     console.error("飞书同步错误:", error)
