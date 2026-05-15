@@ -13,6 +13,8 @@ import { FeishuSyncDialog } from "@/components/feishu-sync-dialog"
 import { AIChatbot } from "@/components/ai-chatbot"
 import { AdminAuthDialog } from "@/components/admin-auth-dialog"
 import { AmountDetailsDialog } from "@/components/amount-details-dialog"
+import { AddReimbursementDialog } from "@/components/add-reimbursement-dialog"
+import { MonthLockDialog } from "@/components/month-lock-dialog"
 import { ChevronLeft, ChevronRight, Download, Users, Menu, TrendingUp } from "lucide-react"
 import {
   DropdownMenu,
@@ -670,11 +672,20 @@ export default function Home() {
               onClick={handleExportPDF}
               className="gap-2 bg-green-600 hover:bg-green-700 text-white shadow-sm rounded-lg px-4 py-2.5 text-sm font-medium transition-all print:hidden"
             >
-              <Download className="h-4 w-4" />
-              导出PDF
-            </Button>
+                <Download className="h-4 w-4" />
+                导出PDF
+              </Button>
+              
+              {/* 新增报销按钮 */}
+              <AddReimbursementDialog 
+                onSuccess={loadDataFromSupabase}
+                employees={employees}
+              />
+              
+              {/* 月份锁定按钮 */}
+              <MonthLockDialog onLockChange={loadDataFromSupabase} />
 
-            <div className="ml-auto print:hidden">
+              <div className="ml-auto print:hidden">
               <Button
                 onClick={handleLogout}
                 variant="outline"
