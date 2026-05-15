@@ -11,7 +11,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Lock, Unlock, Calendar } from "lucide-react"
+import { Lock, Unlock, Calendar, ChevronLeft, ChevronRight } from "lucide-react"
 
 interface MonthLock {
   month: string
@@ -25,18 +25,14 @@ interface MonthLockDialogProps {
 
 export function MonthLockDialog({ onLockChange }: MonthLockDialogProps) {
   const [open, setOpen] = useState(false)
-  const [loading, setLoading] = useState(false)
   const [locks, setLocks] = useState<MonthLock[]>([])
   const [processingMonth, setProcessingMonth] = useState<string | null>(null)
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
 
-  // 生成月份列表（最近18个月）
-  const getMonthList = () => {
+  // 生成指定年份的12个月
+  const getMonthListForYear = (year: number) => {
     const months = []
-    const now = new Date()
-    for (let i = 0; i < 18; i++) {
-      const date = new Date(now.getFullYear(), now.getMonth() - i, 1)
-      const year = date.getFullYear()
-      const month = date.getMonth() + 1
+    for (let month = 12; month >= 1; month--) {
       months.push(`${year}年${month}月`)
     }
     return months
@@ -89,7 +85,8 @@ export function MonthLockDialog({ onLockChange }: MonthLockDialogProps) {
     }
   }
 
-  const months = getMonthList()
+  const months = getMonthListForYear(selectedYear)
+  const currentYear = new Date().getFullYear()
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -106,7 +103,29 @@ export function MonthLockDialog({ onLockChange }: MonthLockDialogProps) {
             锁定后的月份在飞书同步时不会被更新，已报销的数据将保持不变
           </DialogDescription>
         </DialogHeader>
-        <div className="max-h-[400px] overflow-y-auto">
+        
+        {/* 年份切换 */}
+        <div className="flex items-center justify-center gap-4 py-2 border-b">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setSelectedYear((y) => y - 1)}
+            disabled={selectedYear <= 2024}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <span className="text-lg font-semibold min-w-[80px] text-center">{selectedYear}年</span>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setSelectedYear((y) => y + 1)}
+            disabled={selectedYear >= currentYear}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+        
+        <div className="max-h-[350px] overflow-y-auto">
           <div className="grid gap-2 py-4">
             {months.map((month) => {
               const locked = isLocked(month)
