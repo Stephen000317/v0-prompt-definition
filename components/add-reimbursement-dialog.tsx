@@ -118,7 +118,7 @@ export function AddReimbursementDialog({ onSuccess, employees = [] }: AddReimbur
           新增报销
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[425px] bg-white dark:bg-zinc-900">
         <DialogHeader>
           <DialogTitle>手动新增报销</DialogTitle>
           <DialogDescription>
@@ -132,7 +132,7 @@ export function AddReimbursementDialog({ onSuccess, employees = [] }: AddReimbur
             </Label>
             <select
               id="employee"
-              className="col-span-3 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              className="col-span-3 flex h-10 w-full rounded-md border border-input bg-white dark:bg-zinc-800 px-3 py-2 text-sm"
               value={formData.employee_name}
               onChange={(e) => handleEmployeeChange(e.target.value)}
             >
@@ -150,7 +150,7 @@ export function AddReimbursementDialog({ onSuccess, employees = [] }: AddReimbur
             </Label>
             <select
               id="month"
-              className="col-span-3 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              className="col-span-3 flex h-10 w-full rounded-md border border-input bg-white dark:bg-zinc-800 px-3 py-2 text-sm"
               value={formData.month}
               onChange={(e) => setFormData((prev) => ({ ...prev, month: e.target.value }))}
             >

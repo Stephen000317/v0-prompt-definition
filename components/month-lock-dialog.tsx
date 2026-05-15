@@ -99,7 +99,7 @@ export function MonthLockDialog({ onLockChange }: MonthLockDialogProps) {
           月份锁定
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[500px] bg-white dark:bg-zinc-900">
         <DialogHeader>
           <DialogTitle>月份锁定管理</DialogTitle>
           <DialogDescription>
@@ -116,7 +116,7 @@ export function MonthLockDialog({ onLockChange }: MonthLockDialogProps) {
                 <div
                   key={month}
                   className={`flex items-center justify-between p-3 rounded-lg border ${
-                    locked ? "bg-amber-50 border-amber-200" : "bg-background"
+                    locked ? "bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-700" : "bg-gray-50 dark:bg-zinc-800 border-gray-200 dark:border-zinc-700"
                   }`}
                 >
                   <div className="flex items-center gap-2">
