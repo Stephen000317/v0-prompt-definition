@@ -370,6 +370,23 @@ export async function POST(request: NextRequest) {
 
     const monthsToCheck = Array.from(new Set(reimbursements.map((r) => r.month)))
 
+    // 获取已锁定的月份
+    const { data: lockedMonths } = await supabase
+      .from("month_locks")
+      .select("month")
+      .eq("is_locked", true)
+    
+    const lockedMonthSet = new Set(lockedMonths?.map((l) => l.month) || [])
+    console.log(`[v0] 已锁定的月份: ${Array.from(lockedMonthSet).join(", ") || "无"}`)
+
+    // 过滤掉锁定月份的报销记录
+    const unlockedReimbursements = reimbursements.filter((r) => !lockedMonthSet.has(r.month))
+    const skippedLockedCount = reimbursements.length - unlockedReimbursements.length
+    
+    if (skippedLockedCount > 0) {
+      console.log(`[v0] 跳过 ${skippedLockedCount} 条已锁定月份的记录`)
+    }
+
     const { data: existingRecords } = await supabase
       .from("reimbursements")
       .select("id, employee_name, amount, month")
@@ -382,7 +399,7 @@ export async function POST(request: NextRequest) {
     const newReimbursements = []
     const updateReimbursements = []
 
-    for (const r of reimbursements) {
+    for (const r of unlockedReimbursements) {
       const key = `${r.employee_name}_${r.month}`
       const existing = existingRecordsMap.get(key)
 
@@ -407,8 +424,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 获取飞书中的所有员工+月份组合
-    const feishuKeys = new Set(reimbursements.map((r) => `${r.employee_name}_${r.month}`))
+    // 获取飞书中的所有员工+月份组合（排除锁定的月份）
+    const feishuKeys = new Set(unlockedReimbursements.map((r) => `${r.employee_name}_${r.month}`))
 
     const recordsToDelete = []
     for (const [key, value] of existingRecordsMap.entries()) {
@@ -417,6 +434,12 @@ export async function POST(request: NextRequest) {
         const month = monthParts.join("_") // 处理月份中可能包含下划线的情况
 
         console.log(`[v0] 检测到需要删除的记录: ${employeeName} - ${month}`)
+
+        // 检查是否是锁定的月份
+        if (lockedMonthSet.has(month)) {
+          console.log(`[v0] 跳过锁定月份的删除: ${month}`)
+          continue
+        }
 
         // 检查是否是受保护的月份
         if (isProtectedMonth(month)) {
@@ -489,42 +512,54 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Delete existing details for the months being synced, then insert new ones
+    // Delete existing details for the months being synced (excluding locked months), then insert new ones
     if (detailRecords.length > 0) {
       const monthsToSync = Array.from(new Set(detailRecords.map((r) => r.month)))
+        .filter((m) => !lockedMonthSet.has(m)) // 排除锁定的月份
+      
+      if (monthsToSync.length > 0) {
+        // Delete old details for these months
+        await supabase.from("reimbursement_details").delete().in("month", monthsToSync)
 
-      // Delete old details for these months
-      await supabase.from("reimbursement_details").delete().in("month", monthsToSync)
+        // Filter detail records to only include unlocked months
+        const unlockedDetailRecords = detailRecords.filter((r) => !lockedMonthSet.has(r.month))
+        
+        // Insert new details
+        const { error: detailsError } = await supabase.from("reimbursement_details").insert(unlockedDetailRecords)
 
-      // Insert new details
-      const { error: detailsError } = await supabase.from("reimbursement_details").insert(detailRecords)
-
-      if (detailsError) {
-        console.error("[v0] Error inserting details:", detailsError)
-      } else {
-        console.log(`[v0] Inserted ${detailRecords.length} detail records`)
+        if (detailsError) {
+          console.error("[v0] Error inserting details:", detailsError)
+        } else {
+          console.log(`[v0] Inserted ${unlockedDetailRecords.length} detail records (skipped ${detailRecords.length - unlockedDetailRecords.length} locked)`)
+        }
       }
     }
 
     const skippedCount = reimbursements.length - newReimbursements.length - updateReimbursements.length
+    const lockedMonthsList = Array.from(lockedMonthSet)
 
     if (insertedCount === 0 && updatedCount === 0 && deletedCount === 0) {
       return NextResponse.json({
         success: true,
-        message: "所有记录已是最新，无需同步",
+        message: skippedLockedCount > 0 
+          ? `所有记录已是最新，无需同步（跳过了 ${skippedLockedCount} 条已锁定月份的记录）`
+          : "所有记录已是最新，无需同步",
         count: 0,
         skipped: skippedCount,
+        lockedMonths: lockedMonthsList,
       })
     }
 
     return NextResponse.json({
       success: true,
-      message: `同步成功：新增 ${insertedCount} 条，更新 ${updatedCount} 条，删除 ${deletedCount} 条（2025年12月及之后）`,
+      message: `同步成功：新增 ${insertedCount} 条，更新 ${updatedCount} 条，删除 ${deletedCount} 条${skippedLockedCount > 0 ? `（跳过 ${skippedLockedCount} 条已锁定月份记录）` : ""}`,
       count: insertedCount + updatedCount + deletedCount,
       inserted: insertedCount,
       updated: updatedCount,
       deleted: deletedCount,
       skipped: skippedCount,
+      skippedLocked: skippedLockedCount,
+      lockedMonths: lockedMonthsList,
       monthCounts: monthCounts,
     })
   } catch (error: any) {
